@@ -1,34 +1,93 @@
 import 'dart:io';
 
+import 'package:lab6_crypto/lab6_crypto.dart';
+import 'package:lab6_server/controllers/crypto_keys_controller.dart';
+
+import 'package:lab6_server/controllers/messages_controller.dart';
+import 'package:lab6_server/controllers/sessions_controller.dart';
+
+import 'package:lab6_server/repositories/crypto_repository.dart';
+import 'package:lab6_server/repositories/session_repository.dart';
+
 import 'package:shelf/shelf.dart';
-import 'package:shelf/shelf_io.dart';
+import 'package:shelf/shelf_io.dart' as shelf_io;
+import 'package:shelf_cors_headers/shelf_cors_headers.dart';
 import 'package:shelf_router/shelf_router.dart';
 
-// Configure routes.
-final _router = Router()
-  ..get('/', _rootHandler)
-  ..get('/echo/<message>', _echoHandler);
+Future<void> main() async {
+  // Services
+  final rsaService = RsaService();
+  final aesService = AesService();
 
-Response _rootHandler(Request req) {
-  return Response.ok('Hello, World!\n');
-}
+  // Repositories
+  final cryptoRepository = CryptoRepository();
+  final sessionRepository = SessionRepository();
 
-Response _echoHandler(Request request) {
-  final message = request.params['message'];
-  return Response.ok('$message\n');
-}
+  // Controllers
+  final cryptoController = CryptoKeysController(rsaService: rsaService, cryptoRepository: cryptoRepository);
 
-void main(List<String> args) async {
-  // Use any available host or container IP (usually `0.0.0.0`).
-  final ip = InternetAddress.anyIPv4;
+  final sessionsController = SessionsController(
+    rsaService: rsaService,
+    cryptoRepository: cryptoRepository,
+    sessionRepository: sessionRepository,
+  );
 
-  // Configure a pipeline that logs requests.
-  final handler = Pipeline()
+  final messagesController = MessagesController(aesService: aesService, sessionRepository: sessionRepository);
+
+  // Routes
+  final openApi = await File.fromUri(Platform.script.resolve('../openapi.yaml'))
+      .readAsString();
+  final router = Router()
+    ..get(
+      '/openapi.yaml',
+      (Request request) => Response.ok(
+        openApi,
+        headers: {'content-type': 'application/yaml; charset=utf-8'},
+      ),
+    )
+    ..get(
+      '/docs',
+      (Request request) => Response.ok(
+        _swaggerHtml,
+        headers: {'content-type': 'text/html; charset=utf-8'},
+      ),
+    )
+    ..post('/api/crypto-keys/generate/rsa-keys', cryptoController.generateRsaKeyPair)
+    ..get('/api/crypto-keys/rsa-public-key/<id>', cryptoController.getRsaPublicKey)
+    ..post('/api/sessions', sessionsController.createSession)
+    ..post('/api/messages', messagesController.sendMessage);
+
+  // Middleware
+  final handler = const Pipeline()
       .addMiddleware(logRequests())
-      .addHandler(_router.call);
+      .addMiddleware(
+        corsHeaders(headers: {ACCESS_CONTROL_ALLOW_HEADERS: 'Origin, Content-Type, Accept, x-rsa-id, x-session-id'}),
+      )
+      .addHandler(router.call);
 
-  // For running in containers, we respect the PORT environment variable.
+  // Start server
   final port = int.parse(Platform.environment['PORT'] ?? '8080');
-  final server = await serve(handler, ip, port);
-  print('Server listening on port ${server.port}');
+
+  final server = await shelf_io.serve(handler, InternetAddress.anyIPv4, port);
+
+  stdout.writeln('Server running at http://localhost:${server.port}');
 }
+
+const _swaggerHtml = '''
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lab 6 API</title>
+  <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css">
+</head>
+<body>
+  <div id="swagger-ui"></div>
+  <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+  <script>
+    SwaggerUIBundle({url: '/openapi.yaml', dom_id: '#swagger-ui', validatorUrl: null});
+  </script>
+</body>
+</html>
+''';

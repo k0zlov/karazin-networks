@@ -1,49 +1,45 @@
-A server app built using [Shelf](https://pub.dev/packages/shelf),
-configured to enable running with [Docker](https://www.docker.com/).
+# Lab 6 server
 
-This sample code handles HTTP GET requests to `/` and `/echo/<message>`
+HTTP API for RSA key exchange and AES-256-GCM messages. Data is stored in memory.
+Requires Dart 3.14.0; the Flutter client uses Flutter 3.50.0.
 
-# Running the sample
+## Run
 
-## Running with the Dart SDK
+From `lab6_server`:
 
-You can run the example with the [Dart SDK](https://dart.dev/get-dart)
-like this:
-
-```
-$ dart run bin/server.dart
-Server listening on port 8080
+```sh
+dart pub get
+dart run bin/server.dart
 ```
 
-And then from a second terminal:
-```
-$ curl http://0.0.0.0:8080
-Hello, World!
-$ curl http://0.0.0.0:8080/echo/I_love_Dart
-I_love_Dart
-```
+The server listens on port 8080 (override with `PORT`).
+From the monorepo root, run both Docker services with `docker compose up --build`.
 
-## Running with Docker
+## OpenAPI and Swagger UI
 
-If you have [Docker Desktop](https://www.docker.com/get-started) installed, you
-can build and run with the `docker` command:
+- Swagger UI: http://localhost:8080/docs
+- OpenAPI 3.0.3 specification: http://localhost:8080/openapi.yaml
+- Source: [openapi.yaml](openapi.yaml)
 
-```
-$ docker build . -t myserver
-$ docker run -it -p 8080:8080 myserver
-Server listening on port 8080
-```
+Swagger UI loads its JavaScript and CSS from unpkg, so the browser needs internet access.
+The YAML endpoint works offline. Both endpoints are included in the server Docker image.
+The YAML file is located relative to the entrypoint, so starting the server does not depend
+on the current directory. When distributing a compiled server, keep `openapi.yaml` one
+level above the directory containing the executable (for example `bin/server` and `openapi.yaml`).
 
-And then from a second terminal:
-```
-$ curl http://0.0.0.0:8080
-Hello, World!
-$ curl http://0.0.0.0:8080/echo/I_love_Dart
-I_love_Dart
-```
+The specification describes the actual controller contract: RSA generation returns
+`200` with `{id}`, the public key is plain text containing Base64 DER, session creation
+returns `201`, and duplicate sessions return `409`. Requests to create a session require
+`x-rsa-id` and `x-session-id`; messages require `x-session-id`. These headers identify
+stored keys and sessions, without a separate authentication scheme.
 
-You should see the logging printed in the first terminal:
-```
-2021-05-06T15:47:04.620417  0:00:00.000158 GET     [200] /
-2021-05-06T15:47:08.392928  0:00:00.001216 GET     [200] /echo/I_love_Dart
-```
+## CI
+
+[GitHub Actions](../.github/workflows/ci.yml) runs on every push and pull request:
+
+- Dart 3.14.0: dependencies, analysis and unit tests in `lab6_crypto`;
+  dependencies, analysis, HTTP tests and executable compilation in `lab6_server`.
+- Flutter 3.50.0: dependencies, analysis, unit tests and a release Web build in `lab6_client`.
+
+Each step runs from its package directory so `path: ../lab6_crypto` dependencies resolve.
+No secrets or deployment configuration are needed.

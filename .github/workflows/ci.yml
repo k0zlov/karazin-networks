@@ -1,0 +1,45 @@
+name: CI
+
+on: [push, pull_request]
+
+permissions:
+  contents: read
+
+jobs:
+  server:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: '3.14.0'
+      - name: Check crypto and run unit tests
+        working-directory: lab6_crypto
+        run: |
+          dart pub get
+          dart analyze
+          dart test
+      - name: Check, test and build server
+        working-directory: lab6_server
+        run: |
+          dart pub get
+          dart analyze
+          dart test
+          mkdir -p build
+          dart compile exe bin/server.dart -o build/server
+
+  client:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.50.0'
+          channel: stable
+      - name: Check, test and build Flutter Web
+        working-directory: lab6_client
+        run: |
+          flutter pub get
+          flutter analyze
+          flutter test
+          flutter build web --release

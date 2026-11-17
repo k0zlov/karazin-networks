@@ -1,21 +1,36 @@
-# Use latest stable channel SDK.
+
+# Build stage
 FROM dart:stable AS build
 
-# Resolve app dependencies.
 WORKDIR /app
-COPY pubspec.* ./
+
+# Copy package manifests for dependency caching
+COPY lab6_crypto/pubspec.* ./lab6_crypto/
+COPY lab6_server/pubspec.* ./lab6_server/
+
+# Resolve server dependencies, including shared crypto
+WORKDIR /app/lab6_server
 RUN dart pub get
 
-# Copy app source code (except anything in .dockerignore) and AOT compile app.
-COPY . .
-RUN dart build cli --target bin/server.dart -o output
+# Copy source code
+WORKDIR /app
+COPY lab6_crypto/ ./lab6_crypto/
+COPY lab6_server/ ./lab6_server/
 
-# Build minimal serving image from AOT-compiled `/server`
-# and the pre-built AOT-runtime in the `/runtime/` directory of the base image.
+# Build AOT application bundle
+WORKDIR /app/lab6_server
+RUN dart build cli --target bin/server.dart -o /app/output
+
+# Minimal runtime image
 FROM scratch
-COPY --from=build /runtime/ /
-COPY --from=build /app/output/bundle/ /app/
 
-# Start server.
+# Copy Dart AOT runtime dependencies
+COPY --from=build /runtime/ /
+
+# Copy compiled application bundle
+COPY --from=build /app/output/bundle/ /app/
+COPY --from=build /app/lab6_server/openapi.yaml /app/openapi.yaml
+
 EXPOSE 8080
+
 CMD ["/app/bin/server"]

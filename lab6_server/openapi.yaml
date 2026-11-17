@@ -1,0 +1,172 @@
+openapi: 3.0.3
+info:
+  title: Lab 6 Crypto API
+  version: 1.0.0
+  description: RSA key exchange and AES-256-GCM messages. Keys and sessions are stored in memory.
+servers:
+  - url: /
+paths:
+  /api/crypto-keys/generate/rsa-keys:
+    post:
+      summary: Generate and store an RSA-2048 key pair
+      description: No request body is required. The private key stays on the server.
+      responses:
+        '200':
+          description: Generated key pair ID
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id]
+                properties:
+                  id:
+                    type: integer
+                    example: 1
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  /api/crypto-keys/rsa-public-key/{id}:
+    get:
+      summary: Get a stored RSA public key
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Key pair ID returned by the generation endpoint.
+      responses:
+        '200':
+          description: Base64-encoded DER public key, returned as plain text (not JSON or PEM).
+          content:
+            text/plain:
+              schema:
+                type: string
+                format: byte
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/sessions:
+    post:
+      summary: Establish an AES session using the RSA public key
+      parameters:
+        - name: x-rsa-id
+          in: header
+          required: true
+          schema:
+            type: integer
+          description: Stored RSA key pair ID.
+        - name: x-session-id
+          in: header
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          description: A new session ID chosen by the client.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [encryptedKey]
+              properties:
+                encryptedKey:
+                  type: string
+                  format: byte
+                  minLength: 1
+                  description: >-
+                    Base64-encoded RSA-OAEP-SHA256 ciphertext of UTF-8 JSON
+                    {"key":"<Base64 AES key>","iv":"<Base64 IV>"}.
+                    The decoded key must be 32 bytes and IV must be 12 bytes.
+                    Messages carry their own fresh nonce; this IV is stored for compatibility.
+      responses:
+        '201':
+          description: Session established
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [sessionId, status]
+                properties:
+                  sessionId:
+                    type: string
+                  status:
+                    type: string
+                    enum: [established]
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Session ID already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/messages:
+    post:
+      summary: Send an encrypted message and receive an encrypted reply
+      description: The decrypted reply contains the message followed by " | Received at " and a UTC timestamp.
+      parameters:
+        - name: x-session-id
+          in: header
+          required: true
+          schema:
+            type: string
+            minLength: 1
+          description: An established session ID.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [cipherText]
+              properties:
+                cipherText:
+                  $ref: '#/components/schemas/CipherText'
+      responses:
+        '200':
+          description: Encrypted reply using the session AES key and a fresh nonce
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [sessionId, cipherText]
+                properties:
+                  sessionId:
+                    type: string
+                  cipherText:
+                    $ref: '#/components/schemas/CipherText'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+components:
+  schemas:
+    CipherText:
+      type: string
+      format: byte
+      minLength: 1
+      description: Base64 of the concatenated 12-byte nonce, AES-256-GCM ciphertext and 16-byte authentication tag.
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+  responses:
+    BadRequest:
+      description: Missing or invalid parameters, JSON or encrypted data
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: RSA key or session not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
