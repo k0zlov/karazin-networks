@@ -14,13 +14,13 @@ jobs:
         with:
           sdk: '3.14.0'
       - name: Check crypto and run unit tests
-        working-directory: lab6_crypto
+        working-directory: karazin_networks_crypto
         run: |
           dart pub get
           dart analyze
           dart test
       - name: Check, test and build server
-        working-directory: lab6_server
+        working-directory: karazin_networks_server
         run: |
           dart pub get
           dart analyze
@@ -37,7 +37,7 @@ jobs:
           flutter-version: '3.50.0'
           channel: stable
       - name: Check, test and build Flutter Web
-        working-directory: lab6_client
+        working-directory: karazin_networks_client
         run: |
           flutter pub get
           flutter analyze
