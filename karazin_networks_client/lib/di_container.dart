@@ -28,11 +28,13 @@ Future<void> registerDependencies() async {
   );
   getIt.registerLazySingleton<RsaService>(RsaService.new);
   getIt.registerLazySingleton<AesService>(AesService.new);
+  getIt.registerLazySingleton<HashService>(HashService.new);
   getIt.registerFactory<MainCubit>(
     () => MainCubit(
       repository: getIt(),
       rsaService: getIt(),
       aesService: getIt(),
+      hashService: getIt(),
     ),
   );
 

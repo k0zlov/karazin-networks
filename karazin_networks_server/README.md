@@ -60,3 +60,23 @@ ends the attempt and preserves the draft.
 To demonstrate: connect the client, wait longer than one minute, then send a message.
 The first message request returns `440`; the client automatically establishes a new
 session and sends the original text again. The reply appears on the same screen.
+
+## Message integrity
+
+Message requests include `cipherText` and `hash`. The hash is the lowercase
+hexadecimal SHA-256 of the original UTF-8 plaintext, including whitespace and line
+breaks. Both client and server use HashService from karazin_networks_crypto.
+
+The server validates the hash format, decrypts the message, computes its hash and
+compares the two values before generating a reply. Missing or malformed hashes
+return HTTP 400. A well-formed hash that does not match returns HTTP 422 with
+`{"error":"Message hash mismatch"}`.
+
+`Send` sends the correct hash. `Send invalid hash` changes one hexadecimal digit
+of the hash while encrypting the original text normally. It demonstrates the
+HTTP 422 response; the draft and session remain available for another attempt.
+Both buttons are disabled during sending or while no session is established.
+
+If the session expires, the client establishes a new one and retries once using
+the original text and the same hash. The intentionally invalid hash also remains
+invalid after renewal. SHA-256 here is a checksum, not a digital signature.

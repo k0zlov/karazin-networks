@@ -12,11 +12,13 @@ class MainCubit extends Cubit<MainState> {
     required this._repository,
     required this._rsaService,
     required this._aesService,
+    required this._hashService,
   }) : super(const MainState());
 
   final CryptoRepository _repository;
   final RsaService _rsaService;
   final AesService _aesService;
+  final HashService _hashService;
 
   Future<void> connect() async {
     if (isClosed || state.isConnecting || state.isConnected) return;
@@ -59,16 +61,22 @@ class MainCubit extends Cubit<MainState> {
     emit(state.copyWith(message: message));
   }
 
-  Future<void> sendMessage() async {
+  Future<void> sendMessage({bool corruptHash = false}) async {
     if (isClosed || !state.canSend) return;
     final session = state.session!;
     final message = state.message;
     emit(state.copyWith(isSending: true, reply: '', messageError: ''));
 
     try {
+      var hash = await _hashService.sha256(message);
+      if (corruptHash) {
+        final firstCharacter = hash.startsWith('0') ? '1' : '0';
+        hash = '$firstCharacter${hash.substring(1)}';
+      }
+
       String reply;
       try {
-        reply = await _exchangeMessage(session, message);
+        reply = await _exchangeMessage(session, message, hash);
       } on DioException catch (error) {
         if (error.response?.statusCode != 440) rethrow;
         if (isClosed) return;
@@ -77,7 +85,7 @@ class MainCubit extends Cubit<MainState> {
         await connect();
         if (isClosed || !state.isConnected) return;
 
-        reply = await _exchangeMessage(state.session!, message);
+        reply = await _exchangeMessage(state.session!, message, hash);
       }
       if (isClosed) return;
 
@@ -109,11 +117,13 @@ class MainCubit extends Cubit<MainState> {
   Future<String> _exchangeMessage(
     ({String id, AesKey key}) session,
     String message,
+    String hash,
   ) async {
     final cipherText = await _aesService.encrypt(session.key, message);
     final encryptedReply = await _repository.sendMessage(
       sessionId: session.id,
       cipherText: cipherText,
+      hash: hash,
     );
     return _aesService.decrypt(session.key, encryptedReply);
   }
@@ -122,6 +132,8 @@ class MainCubit extends Cubit<MainState> {
     if (error is! DioException) return '$fallback.';
 
     final statusCode = error.response?.statusCode;
+    if (statusCode == 422) return 'Message rejected: hash mismatch (HTTP 422).';
+
     return switch (error.type) {
       DioExceptionType.connectionTimeout ||
       DioExceptionType.sendTimeout ||

@@ -14,7 +14,9 @@ class FakeCryptoRepository extends Fake implements CryptoRepository {
   final RsaService rsaService;
   final AesService aesService;
   final sessions = <String, AesKey>{};
-  final messages = <({String sessionId, String text, String cipherText})>[];
+  final messages =
+      <({String sessionId, String text, String cipherText, String hash})>[];
+  final hashService = HashService();
   final messageStatuses = <int>[];
   int generatedKeys = 0;
   int createdSessions = 0;
@@ -56,16 +58,23 @@ class FakeCryptoRepository extends Fake implements CryptoRepository {
   Future<String> sendMessage({
     required String sessionId,
     required String cipherText,
+    required String hash,
   }) async {
     final key = sessions[sessionId]!;
     final text = await aesService.decrypt(key, cipherText);
-    messages.add((sessionId: sessionId, text: text, cipherText: cipherText));
+    messages.add((
+      sessionId: sessionId,
+      text: text,
+      cipherText: cipherText,
+      hash: hash,
+    ));
     if (messageStarted case final started? when !started.isCompleted) {
       started.complete();
     }
     await messageGate;
     final status = messageStatuses.isEmpty ? 200 : messageStatuses.removeAt(0);
     if (status != 200) throw httpError(status);
+    if (hash != await hashService.sha256(text)) throw httpError(422);
     return aesService.encrypt(key, 'Server reply: $text');
   }
 }
@@ -94,6 +103,7 @@ void main() {
       repository: repository,
       rsaService: rsaService,
       aesService: aesService,
+      hashService: HashService(),
     );
   });
 
@@ -175,6 +185,8 @@ void main() {
       final retry = repository.messages.last;
       expect(first.text, message);
       expect(retry.text, message);
+      expect(first.hash, await HashService().sha256(message));
+      expect(retry.hash, first.hash);
       expect(retry.sessionId, isNot(first.sessionId));
       expect(
         repository.sessions[retry.sessionId]!.key,
@@ -334,4 +346,58 @@ void main() {
     expect(repository.createdSessions, 1);
     expect(cubit.isClosed, isTrue);
   });
+
+  test('Sends an invalid hash without changing the text and allows a normal send afterwards', () async {
+    await cubit.connect();
+    final sessionId = cubit.state.session!.id;
+    const message = '  Привіт! 🔐\nHello  ';
+    cubit.changeMessage(message);
+    await cubit.sendMessage(corruptHash: true);
+
+    expect(repository.messages, hasLength(1));
+    final sent = repository.messages.single;
+    expect(sent.text, message);
+    expect(sent.hash, matches(RegExp(r'^[0-9a-f]{64}$')));
+    expect(sent.hash, isNot(await HashService().sha256(message)));
+    expect(cubit.state.reply, isEmpty);
+    expect(
+      cubit.state.messageError,
+      'Message rejected: hash mismatch (HTTP 422).',
+    );
+    expect(cubit.state.message, message);
+    expect(cubit.state.session!.id, sessionId);
+    expect(cubit.state.canSend, isTrue);
+    expect(repository.createdSessions, 1);
+
+    await cubit.sendMessage();
+    expect(repository.messages, hasLength(2));
+    expect(cubit.state.reply, 'Server reply: $message');
+    expect(cubit.state.messageError, isEmpty);
+  });
+
+  test(
+    'Keeps the same intentionally invalid hash after session renewal',
+    () async {
+      await cubit.connect();
+      repository.messageStatuses.add(440);
+      cubit.changeMessage('Invalid after renewal');
+      await cubit.sendMessage(corruptHash: true);
+
+      expect(repository.messages, hasLength(2));
+      final first = repository.messages.first;
+      final retry = repository.messages.last;
+      expect(retry.hash, first.hash);
+      expect(retry.text, first.text);
+      expect(retry.sessionId, isNot(first.sessionId));
+      expect(retry.cipherText, isNot(first.cipherText));
+      expect(repository.createdSessions, 2);
+      expect(
+        cubit.state.messageError,
+        'Message rejected: hash mismatch (HTTP 422).',
+      );
+      expect(cubit.state.reply, isEmpty);
+      expect(cubit.state.message, 'Invalid after renewal');
+      expect(cubit.state.canSend, isTrue);
+    },
+  );
 }

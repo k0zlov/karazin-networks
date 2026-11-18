@@ -18,13 +18,17 @@ Future<void> main() async {
   // Services
   final rsaService = RsaService();
   final aesService = AesService();
+  final hashService = HashService();
 
   // Repositories
   final cryptoRepository = CryptoRepository();
   final sessionRepository = SessionRepository();
 
   // Controllers
-  final cryptoController = CryptoKeysController(rsaService: rsaService, cryptoRepository: cryptoRepository);
+  final cryptoController = CryptoKeysController(
+    rsaService: rsaService,
+    cryptoRepository: cryptoRepository,
+  );
 
   final sessionsController = SessionsController(
     rsaService: rsaService,
@@ -32,7 +36,11 @@ Future<void> main() async {
     sessionRepository: sessionRepository,
   );
 
-  final messagesController = MessagesController(aesService: aesService, sessionRepository: sessionRepository);
+  final messagesController = MessagesController(
+    aesService: aesService,
+    hashService: hashService,
+    sessionRepository: sessionRepository,
+  );
 
   // Routes
   final openApi = await File.fromUri(Platform.script.resolve('../openapi.yaml'))
@@ -52,8 +60,14 @@ Future<void> main() async {
         headers: {'content-type': 'text/html; charset=utf-8'},
       ),
     )
-    ..post('/api/crypto-keys/generate/rsa-keys', cryptoController.generateRsaKeyPair)
-    ..get('/api/crypto-keys/rsa-public-key/<id>', cryptoController.getRsaPublicKey)
+    ..post(
+      '/api/crypto-keys/generate/rsa-keys',
+      cryptoController.generateRsaKeyPair,
+    )
+    ..get(
+      '/api/crypto-keys/rsa-public-key/<id>',
+      cryptoController.getRsaPublicKey,
+    )
     ..post('/api/sessions', sessionsController.createSession)
     ..post('/api/messages', messagesController.sendMessage);
 
@@ -61,7 +75,12 @@ Future<void> main() async {
   final handler = const Pipeline()
       .addMiddleware(logRequests())
       .addMiddleware(
-        corsHeaders(headers: {ACCESS_CONTROL_ALLOW_HEADERS: 'Origin, Content-Type, Accept, x-rsa-id, x-session-id'}),
+        corsHeaders(
+          headers: {
+            ACCESS_CONTROL_ALLOW_HEADERS:
+                'Origin, Content-Type, Accept, x-rsa-id, x-session-id',
+          },
+        ),
       )
       .addHandler(router.call);
 

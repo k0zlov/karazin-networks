@@ -6,10 +6,12 @@ import 'package:shelf/shelf.dart';
 class MessagesController {
   MessagesController({
     required this._aesService,
+    required this._hashService,
     required this._sessionRepository,
   });
 
   final AesService _aesService;
+  final HashService _hashService;
   final SessionRepository _sessionRepository;
 
   Future<Response> sendMessage(Request request) async {
@@ -39,7 +41,18 @@ class MessagesController {
         return jsonResponse(400, {'error': 'Missing cipherText'});
       }
 
+      final hash = body['hash'];
+
+      if (hash is! String || !RegExp(r'^[0-9a-f]{64}$').hasMatch(hash)) {
+        return jsonResponse(400, {'error': 'Invalid message hash'});
+      }
+
       final message = await _aesService.decrypt(aesKey, cipherText);
+      final expectedHash = await _hashService.sha256(message);
+
+      if (hash != expectedHash) {
+        return jsonResponse(422, {'error': 'Message hash mismatch'});
+      }
 
       final receivedAt = DateTime.timestamp().toIso8601String();
 

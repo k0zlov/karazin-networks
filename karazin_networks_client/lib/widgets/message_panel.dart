@@ -8,6 +8,7 @@ class MessagePanel extends StatelessWidget {
     required this.error,
     required this.onChanged,
     required this.onSend,
+    required this.onSendInvalidHash,
     super.key,
   });
 
@@ -17,6 +18,7 @@ class MessagePanel extends StatelessWidget {
   final String error;
   final ValueChanged<String> onChanged;
   final VoidCallback? onSend;
+  final VoidCallback? onSendInvalidHash;
 
   @override
   Widget build(BuildContext context) {
@@ -33,9 +35,19 @@ class MessagePanel extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 12),
-        FilledButton(
-          onPressed: onSend,
-          child: Text(isSending ? 'Sending…' : 'Send'),
+        Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: [
+            FilledButton(
+              onPressed: onSend,
+              child: Text(isSending ? 'Sending…' : 'Send'),
+            ),
+            OutlinedButton(
+              onPressed: onSendInvalidHash,
+              child: const Text('Send invalid hash'),
+            ),
+          ],
         ),
         if (error.isNotEmpty) ...[
           const SizedBox(height: 16),

@@ -116,7 +116,9 @@ paths:
         The server checks expiration before reading or decrypting the request body.
         A session is expired when expiresAt, stored in UTC, is earlier than the current time.
         On HTTP 440, create a new RSA/AES session, encrypt the original plaintext with the new
-        AES key and retry the message once. Do not resend the previous ciphertext.
+        AES key and retry the message once using the same hash. Do not resend the previous ciphertext.
+        The server computes SHA-256 of the decrypted UTF-8 plaintext, preserving whitespace,
+        and rejects a mismatching hash with HTTP 422.
       parameters:
         - name: x-session-id
           in: header
@@ -131,10 +133,12 @@ paths:
           application/json:
             schema:
               type: object
-              required: [cipherText]
+              required: [cipherText, hash]
               properties:
                 cipherText:
                   $ref: '#/components/schemas/CipherText'
+                hash:
+                  $ref: '#/components/schemas/MessageHash'
       responses:
         '200':
           description: Encrypted reply using the session AES key and a fresh nonce
@@ -152,6 +156,14 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '404':
           $ref: '#/components/responses/NotFound'
+        '422':
+          description: The supplied hash does not match the decrypted message
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Message hash mismatch
         '440':
           description: Session expired
           content:
@@ -162,6 +174,12 @@ paths:
                 error: Session expired
 components:
   schemas:
+    MessageHash:
+      type: string
+      minLength: 64
+      maxLength: 64
+      pattern: '^[0-9a-f]{64}$'
+      description: Lowercase hexadecimal SHA-256 of the original UTF-8 plaintext, without trimming or normalization.
     CipherText:
       type: string
       format: byte

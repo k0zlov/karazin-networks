@@ -37,6 +37,9 @@ class MainScreen extends StatelessWidget {
                       error: state.messageError,
                       onChanged: cubit.changeMessage,
                       onSend: state.canSend ? cubit.sendMessage : null,
+                      onSendInvalidHash: state.canSend
+                          ? () => cubit.sendMessage(corruptHash: true)
+                          : null,
                     ),
                   ],
                 );

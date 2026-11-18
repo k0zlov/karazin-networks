@@ -24,27 +24,39 @@ class CryptoRepository {
     return key.trim();
   }
 
-  Future<void> createSession({required int rsaId, required String sessionId, required String encryptedKey}) async {
+  Future<void> createSession({
+    required int rsaId,
+    required String sessionId,
+    required String encryptedKey,
+  }) async {
     final response = await _network.post<Object?>(
       ApiRoutes.sessions,
       headers: {'x-rsa-id': rsaId.toString(), 'x-session-id': sessionId},
       data: {'encryptedKey': encryptedKey},
     );
-    if (response case {'sessionId': final String confirmedId, 'status': 'established'} when confirmedId == sessionId) {
+
+    if (response
+        case {'sessionId': final String confirmedId, 'status': 'established'}
+        when confirmedId == sessionId) {
       return;
     }
 
     throw const FormatException('Invalid session confirmation');
   }
 
-  Future<String> sendMessage({required String sessionId, required String cipherText}) async {
+  Future<String> sendMessage({
+    required String sessionId,
+    required String cipherText,
+    required String hash,
+  }) async {
     final response = await _network.post<Object?>(
       ApiRoutes.messages,
       headers: {'x-session-id': sessionId},
-      data: {'cipherText': cipherText},
+      data: {'cipherText': cipherText, 'hash': hash},
     );
 
-    if (response case {'cipherText': final String encryptedReply} when encryptedReply.isNotEmpty) {
+    if (response case {'cipherText': final String encryptedReply}
+        when encryptedReply.isNotEmpty) {
       return encryptedReply;
     }
 

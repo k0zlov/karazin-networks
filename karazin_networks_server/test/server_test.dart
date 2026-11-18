@@ -13,6 +13,7 @@ void main() {
   final client = http.Client();
   final rsaService = RsaService();
   final aesService = AesService();
+  final hashService = HashService();
   Process? server;
   late Uri baseUrl;
   late int rsaId;
@@ -20,7 +21,7 @@ void main() {
 
   Future<http.Response> postJson(
     String path,
-    Map<String, String> body, {
+    Map<String, Object?> body, {
     Map<String, String> headers = const {},
   }) {
     return client.post(
@@ -39,10 +40,14 @@ void main() {
     );
   }
 
-  Future<http.Response> sendMessage(String sessionId, String cipherText) {
+  Future<http.Response> sendMessage(
+    String sessionId,
+    String cipherText, {
+    String? hash,
+  }) {
     return postJson(
       messagesPath,
-      {'cipherText': cipherText},
+      {'cipherText': cipherText, 'hash': hash},
       headers: {'x-session-id': sessionId},
     );
   }
@@ -162,7 +167,11 @@ void main() {
       final replyNonces = <String>{};
       for (var i = 0; i < 2; i++) {
         final encrypted = await aesService.encrypt(aesKey, message);
-        final response = await sendMessage(sessionId, encrypted);
+        final response = await sendMessage(
+          sessionId,
+          encrypted,
+          hash: await hashService.sha256(message),
+        );
         expect(response.statusCode, 200, reason: response.body);
         final body = jsonDecode(response.body) as Map<String, dynamic>;
         expect(body['sessionId'], sessionId);
@@ -225,8 +234,79 @@ void main() {
 
     final bytes = base64Decode(await aesService.encrypt(aesKey, 'Hello'));
     bytes[bytes.length - 1] ^= 1;
-    final response = await sendMessage(sessionId, base64Encode(bytes));
+    final response = await sendMessage(
+      sessionId,
+      base64Encode(bytes),
+      hash: await hashService.sha256('Hello'),
+    );
     expectError(response, 400, 'Invalid encrypted message');
+  });
+
+  test('Rejects a valid AES message with the wrong hash and keeps the session usable', () async {
+    const sessionId = 'hash-mismatch';
+    final aesKey = await aesService.generateSecretKey();
+    expect((await createSession(sessionId, aesKey)).statusCode, 201);
+    const message = '  Привіт, сервере! 🔐\nHello  ';
+    final cipherText = await aesService.encrypt(aesKey, message);
+    final wrongHash = await hashService.sha256('$message changed');
+    final rejected = await sendMessage(sessionId, cipherText, hash: wrongHash);
+    expectError(rejected, 422, 'Message hash mismatch');
+
+    final accepted = await sendMessage(
+      sessionId,
+      cipherText,
+      hash: await hashService.sha256(message),
+    );
+    expect(accepted.statusCode, 200, reason: accepted.body);
+    final body = jsonDecode(accepted.body) as Map<String, dynamic>;
+    expect(
+      await aesService.decrypt(aesKey, body['cipherText'] as String),
+      startsWith('$message | Received at '),
+    );
+  });
+
+  test('Rejects missing and malformed hashes', () async {
+    const sessionId = 'invalid-hash';
+    final aesKey = await aesService.generateSecretKey();
+    expect((await createSession(sessionId, aesKey)).statusCode, 201);
+    final cipherText = await aesService.encrypt(aesKey, 'Hello');
+    final missing = await postJson(
+      messagesPath,
+      {'cipherText': cipherText},
+      headers: {'x-session-id': sessionId},
+    );
+    expectError(missing, 400, 'Invalid message hash');
+
+    for (final hash in [
+      null,
+      '',
+      'a' * 63,
+      'a' * 65,
+      'g' * 64,
+      'A' * 64,
+      123,
+      <String>[],
+    ]) {
+      final response = await postJson(
+        messagesPath,
+        {'cipherText': cipherText, 'hash': hash},
+        headers: {'x-session-id': sessionId},
+      );
+      expectError(response, 400, 'Invalid message hash');
+    }
+  });
+
+  test('Accepts the independently known SHA-256 hash of abc', () async {
+    const sessionId = 'known-hash';
+    final aesKey = await aesService.generateSecretKey();
+    expect((await createSession(sessionId, aesKey)).statusCode, 201);
+    final cipherText = await aesService.encrypt(aesKey, 'abc');
+    final response = await sendMessage(
+      sessionId,
+      cipherText,
+      hash: 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad',
+    );
+    expect(response.statusCode, 200, reason: response.body);
   });
 
   test('Allows browser preflight for session and message requests', () async {

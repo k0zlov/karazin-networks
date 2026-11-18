@@ -8,6 +8,7 @@ import 'package:test/test.dart';
 
 void main() {
   final aes = AesService();
+  final hashService = HashService();
   late DateTime now;
   late SessionRepository repository;
   late MessagesController controller;
@@ -18,20 +19,25 @@ void main() {
     repository = SessionRepository(now: () => now);
     controller = MessagesController(
       aesService: aes,
+      hashService: hashService,
       sessionRepository: repository,
     );
     key = await aes.generateSecretKey();
     expect(repository.save('original', key), isTrue);
   });
 
-  Future<Response> send(String id, String cipherText) => controller.sendMessage(
-    Request(
-      'POST',
-      Uri.parse('http://localhost/api/messages'),
-      headers: {'x-session-id': id, 'content-type': 'application/json'},
-      body: jsonEncode({'cipherText': cipherText}),
-    ),
-  );
+  Future<Response> send(String id, String cipherText, String message) async =>
+      controller.sendMessage(
+        Request(
+          'POST',
+          Uri.parse('http://localhost/api/messages'),
+          headers: {'x-session-id': id, 'content-type': 'application/json'},
+          body: jsonEncode({
+            'cipherText': cipherText,
+            'hash': await hashService.sha256(message),
+          }),
+        ),
+      );
 
   test('Stores the ID, AES key and one-minute expiration in UTC', () {
     final session = repository.getById('original')!;
@@ -76,7 +82,7 @@ void main() {
       expiresAt,
     ]) {
       now = time;
-      final response = await send('original', cipherText);
+      final response = await send('original', cipherText, 'Привіт 🔐');
       expect(response.statusCode, 200);
       final body =
           jsonDecode(await response.readAsString()) as Map<String, dynamic>;
@@ -121,8 +127,12 @@ void main() {
       final newKey = await aes.generateSecretKey();
       expect(repository.save('renewed', newKey), isTrue);
       final cipherText = await aes.encrypt(newKey, 'Same original message');
-      expect((await send('original', cipherText)).statusCode, 440);
-      final response = await send('renewed', cipherText);
+      expect((await send('original', cipherText, 'Привіт 🔐')).statusCode, 440);
+      final response = await send(
+        'renewed',
+        cipherText,
+        'Same original message',
+      );
       expect(response.statusCode, 200);
       final body =
           jsonDecode(await response.readAsString()) as Map<String, dynamic>;
