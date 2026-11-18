@@ -43,3 +43,20 @@ stored keys and sessions, without a separate authentication scheme.
 
 Each step runs from its package directory so `path: ../karazin_networks_crypto` dependencies resolve.
 No secrets or deployment configuration are needed.
+
+## Session expiration
+
+`Session` stores the session ID, AES key and `expiresAt` in UTC. The
+`sessionLifetime` constant in `lib/repositories/session_repository.dart` is one minute.
+The current UTC time is created with `DateTime.timestamp()`. A session is expired
+when `expiresAt` is earlier than the current time. Expired sessions are retained
+in memory, and their IDs cannot be reused.
+
+`POST /api/messages` checks expiration before reading the request body and returns
+HTTP `440` with `{"error":"Session expired"}`. The client creates a new RSA/AES session,
+re-encrypts the original message with the new key and retries once. A second error
+ends the attempt and preserves the draft.
+
+To demonstrate: connect the client, wait longer than one minute, then send a message.
+The first message request returns `440`; the client automatically establishes a new
+session and sends the original text again. The reply appears on the same screen.

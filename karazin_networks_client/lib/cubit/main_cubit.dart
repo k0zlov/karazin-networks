@@ -66,35 +66,56 @@ class MainCubit extends Cubit<MainState> {
     emit(state.copyWith(isSending: true, reply: '', messageError: ''));
 
     try {
-      final cipherText = await _aesService.encrypt(session.key, message);
-      final encryptedReply = await _repository.sendMessage(
-        sessionId: session.id,
-        cipherText: cipherText,
-      );
-      final reply = await _aesService.decrypt(session.key, encryptedReply);
+      String reply;
+      try {
+        reply = await _exchangeMessage(session, message);
+      } on DioException catch (error) {
+        if (error.response?.statusCode != 440) rethrow;
+        if (isClosed) return;
+
+        emit(state.copyWith(clearSession: true));
+        await connect();
+        if (isClosed || !state.isConnected) return;
+
+        reply = await _exchangeMessage(state.session!, message);
+      }
       if (isClosed) return;
 
-      emit(state.copyWith(reply: reply, isSending: false));
+      emit(state.copyWith(reply: reply));
     } catch (error) {
       if (isClosed) return;
 
-      if (error is DioException && error.response?.statusCode == 404) {
+      if (error is DioException &&
+          (error.response?.statusCode == 404 ||
+              error.response?.statusCode == 440)) {
         emit(
           state.copyWith(
             clearSession: true,
-            isSending: false,
             sessionError: 'The session has ended. Reconnect to continue.',
           ),
         );
       } else {
         emit(
           state.copyWith(
-            isSending: false,
             messageError: _describeError(error, 'Could not exchange a message'),
           ),
         );
       }
+    } finally {
+      if (!isClosed) emit(state.copyWith(isSending: false));
     }
+  }
+
+  Future<String> _exchangeMessage(
+    ({String id, AesKey key}) session,
+    String message,
+  ) async {
+    final cipherText = await _aesService.encrypt(session.key, message);
+    final encryptedReply = await _repository.sendMessage(
+      sessionId: session.id,
+      cipherText: cipherText,
+    );
+    return _aesService.decrypt(session.key, encryptedReply);
   }
 
   String _describeError(Object error, String fallback) {

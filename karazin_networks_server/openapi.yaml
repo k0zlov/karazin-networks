@@ -49,6 +49,9 @@ paths:
   /api/sessions:
     post:
       summary: Establish an AES session using the RSA public key
+      description: >-
+        Sessions expire after one minute, configured by the server sessionLifetime constant.
+        Expired sessions remain in memory and their IDs cannot be reused.
       parameters:
         - name: x-rsa-id
           in: header
@@ -108,7 +111,12 @@ paths:
   /api/messages:
     post:
       summary: Send an encrypted message and receive an encrypted reply
-      description: The decrypted reply contains the message followed by " | Received at " and a UTC timestamp.
+      description: >-
+        The decrypted reply contains the message followed by " | Received at " and a UTC timestamp.
+        The server checks expiration before reading or decrypting the request body.
+        A session is expired when expiresAt, stored in UTC, is earlier than the current time.
+        On HTTP 440, create a new RSA/AES session, encrypt the original plaintext with the new
+        AES key and retry the message once. Do not resend the previous ciphertext.
       parameters:
         - name: x-session-id
           in: header
@@ -144,6 +152,14 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '404':
           $ref: '#/components/responses/NotFound'
+        '440':
+          description: Session expired
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Session expired
 components:
   schemas:
     CipherText:
