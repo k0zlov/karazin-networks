@@ -309,6 +309,30 @@ void main() {
     expect(response.statusCode, 200, reason: response.body);
   });
 
+  test(
+    'Lists stored sessions through HTTP without exposing AES keys or IVs',
+    () async {
+      const sessionId = 'listed-over-http';
+      final key = await aesService.generateSecretKey();
+      expect((await createSession(sessionId, key)).statusCode, 201);
+      final response = await client.get(baseUrl.resolve(sessionsPath));
+      expect(response.statusCode, 200);
+      expect(response.headers['content-type'], startsWith('application/json'));
+      final sessions = jsonDecode(response.body) as List<dynamic>;
+      final session = sessions.singleWhere(
+        (session) => session['sessionId'] == sessionId,
+      ) as Map<String, dynamic>;
+      expect(
+        session.keys,
+        unorderedEquals(['sessionId', 'isValid', 'expiresAt']),
+      );
+      expect(session['isValid'], isTrue);
+      expect(DateTime.parse(session['expiresAt'] as String).isUtc, isTrue);
+      expect(response.body, isNot(contains(key.key)));
+      expect(response.body, isNot(contains(key.iv)));
+    },
+  );
+
   test('Allows browser preflight for session and message requests', () async {
     const origin = 'http://localhost:8081';
     for (final (path, requestedHeaders) in [

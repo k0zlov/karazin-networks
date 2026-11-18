@@ -68,6 +68,7 @@ Future<void> main() async {
       '/api/crypto-keys/rsa-public-key/<id>',
       cryptoController.getRsaPublicKey,
     )
+    ..get('/api/sessions', sessionsController.getSessions)
     ..post('/api/sessions', sessionsController.createSession)
     ..post('/api/messages', messagesController.sendMessage);
 

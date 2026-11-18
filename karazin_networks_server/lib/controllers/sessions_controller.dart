@@ -7,17 +7,39 @@ import 'package:karazin_networks_server/utils/json_response.dart';
 import 'package:shelf/shelf.dart';
 
 class SessionsController {
-  SessionsController({required this._rsaService, required this._cryptoRepository, required this._sessionRepository});
+  SessionsController({
+    required this._rsaService,
+    required this._cryptoRepository,
+    required this._sessionRepository,
+  });
 
   final RsaService _rsaService;
   final CryptoRepository _cryptoRepository;
   final SessionRepository _sessionRepository;
 
+  Response getSessions(Request request) {
+    final sessions = _sessionRepository.getAll();
+    final summaries = sessions
+        .map(
+          (session) => {
+            'sessionId': session.id,
+            'isValid': !_sessionRepository.isExpired(session),
+            'expiresAt': session.expiresAt.toIso8601String(),
+          },
+        )
+        .toList();
+
+    return jsonResponse(200, summaries);
+  }
+
   Future<Response> createSession(Request request) async {
     final rsaId = int.tryParse(request.headers['x-rsa-id'] ?? '');
     final sessionId = request.headers['x-session-id'];
 
-    if (rsaId == null || sessionId == null || sessionId.isEmpty || sessionId.length > 128) {
+    if (rsaId == null ||
+        sessionId == null ||
+        sessionId.isEmpty ||
+        sessionId.length > 128) {
       return jsonResponse(400, {'error': 'Invalid RSA ID or session ID'});
     }
 
@@ -50,17 +72,26 @@ class SessionsController {
       final key = data['key'];
       final iv = data['iv'];
 
-      if (key is! String || iv is! String || base64Decode(key).length != 32 || base64Decode(iv).length != 12) {
+      if (key is! String ||
+          iv is! String ||
+          base64Decode(key).length != 32 ||
+          base64Decode(iv).length != 12) {
         return jsonResponse(400, {'error': 'Invalid AES key or IV'});
       }
 
-      final saved = _sessionRepository.save(sessionId, AesKey(key: key, iv: iv));
+      final saved = _sessionRepository.save(
+        sessionId,
+        AesKey(key: key, iv: iv),
+      );
 
       if (!saved) {
         return jsonResponse(409, {'error': 'Session already exists'});
       }
 
-      return jsonResponse(201, {'sessionId': sessionId, 'status': 'established'});
+      return jsonResponse(201, {
+        'sessionId': sessionId,
+        'status': 'established',
+      });
     } catch (_) {
       return jsonResponse(400, {'error': 'Invalid encrypted session data'});
     }

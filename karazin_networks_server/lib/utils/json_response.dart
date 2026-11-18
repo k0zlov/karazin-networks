@@ -2,8 +2,12 @@ import 'dart:convert';
 
 import 'package:shelf/shelf.dart';
 
-Response jsonResponse(int statusCode, Map<String, dynamic> data) {
-  return Response(statusCode, body: jsonEncode(data), headers: {'content-type': 'application/json; charset=utf-8'});
+Response jsonResponse(int statusCode, Object? data) {
+  return Response(
+    statusCode,
+    body: jsonEncode(data),
+    headers: {'content-type': 'application/json; charset=utf-8'},
+  );
 }
 
 Future<Map<String, dynamic>> readJsonBody(Request request) async {

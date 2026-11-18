@@ -1,3 +1,7 @@
+import 'package:go_router/go_router.dart';
+import 'package:karazin_networks_client/di_container.dart';
+import 'package:karazin_networks_client/models/session_info.dart';
+import 'package:karazin_networks_client/navigation/routes.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:karazin_networks_client/cubit/main_cubit.dart';
@@ -7,7 +11,16 @@ import 'package:karazin_networks_client/screens/main_screen.dart';
 import 'package:karazin_networks_crypto/karazin_networks_crypto.dart';
 import 'package:material_ui/material_ui.dart';
 
-class FakeCryptoRepository extends Fake implements CryptoRepository {}
+class FakeCryptoRepository extends Fake implements CryptoRepository {
+  @override
+  Future<List<SessionInfo>> getSessions() async => [
+    SessionInfo(
+      sessionId: 'listed-session',
+      isValid: true,
+      expiresAt: DateTime.utc(2026, 11, 18, 12, 1),
+    ),
+  ];
+}
 
 class RecordingMainCubit extends MainCubit {
   RecordingMainCubit({bool isSending = false})
@@ -99,5 +112,60 @@ void main() {
     expect(find.text('Send'), findsOneWidget);
     expect(find.text('Send invalid hash'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  Future<void> openRouter(
+    WidgetTester tester, {
+    String initialLocation = '/',
+  }) async {
+    await getIt.reset();
+    final cubit = RecordingMainCubit();
+    getIt.registerSingleton<CryptoRepository>(FakeCryptoRepository());
+    getIt.registerFactory<MainCubit>(() => cubit);
+    final router = GoRouter(
+      routes: $appRoutes,
+      initialLocation: initialLocation,
+    );
+    addTearDown(() async {
+      await tester.pumpWidget(const SizedBox());
+      router.dispose();
+      await getIt.reset();
+      if (!cubit.isClosed) await cubit.close();
+    });
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('Opens sessions and returns to the same draft and session', (
+    tester,
+  ) async {
+    await openRouter(tester);
+    await tester.enterText(find.byType(TextField), 'Saved draft');
+    await tester.pump();
+    final cubit = getIt<MainCubit>();
+    final sessionId = cubit.state.session!.id;
+    await tester.tap(find.text('Sessions'));
+    await tester.pumpAndSettle();
+    expect(find.text('listed-session'), findsOneWidget);
+    await tester.tap(find.byTooltip('Back'));
+    await tester.pumpAndSettle();
+    expect(find.text('Karazin Networks'), findsOneWidget);
+    expect(
+      tester.widget<EditableText>(find.byType(EditableText)).controller.text,
+      'Saved draft',
+    );
+    expect(cubit.state.session!.id, sessionId);
+    expect(cubit.isClosed, isFalse);
+  });
+
+  testWidgets('Returns to the main screen when sessions is opened directly', (
+    tester,
+  ) async {
+    await openRouter(tester, initialLocation: '/sessions');
+    expect(find.text('listed-session'), findsOneWidget);
+    await tester.tap(find.byTooltip('Back'));
+    await tester.pumpAndSettle();
+    expect(find.text('Karazin Networks'), findsOneWidget);
+    expect(find.byType(TextField), findsOneWidget);
   });
 }

@@ -13,3 +13,13 @@ class MainRoute extends GoRouteData with $MainRoute {
     return ScreenFactory.createMainScreen();
   }
 }
+
+@TypedGoRoute<SessionsRoute>(path: '/sessions')
+class SessionsRoute extends GoRouteData with $SessionsRoute {
+  const SessionsRoute();
+
+  @override
+  Widget build(BuildContext context, GoRouterState state) {
+    return ScreenFactory.createSessionsScreen();
+  }
+}

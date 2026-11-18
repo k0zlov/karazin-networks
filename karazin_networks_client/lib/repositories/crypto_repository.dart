@@ -1,3 +1,4 @@
+import 'package:karazin_networks_client/models/session_info.dart';
 import 'package:karazin_networks_client/network/api_routes.dart';
 import 'package:karazin_networks_client/network/network.dart';
 
@@ -42,6 +43,15 @@ class CryptoRepository {
     }
 
     throw const FormatException('Invalid session confirmation');
+  }
+
+  Future<List<SessionInfo>> getSessions() async {
+    final response = await _network.get<Object?>(ApiRoutes.sessions);
+    if (response is! List) {
+      throw const FormatException('Invalid sessions response');
+    }
+
+    return response.map(SessionInfo.fromJson).toList();
   }
 
   Future<String> sendMessage({

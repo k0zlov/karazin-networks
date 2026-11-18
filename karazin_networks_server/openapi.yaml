@@ -47,6 +47,21 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
   /api/sessions:
+    get:
+      summary: List all stored sessions, including expired sessions
+      description: >-
+        Returns session IDs, validity at request time and UTC expiration times.
+        Expired sessions remain in memory until the server restarts.
+        AES keys and IVs are never included.
+      responses:
+        '200':
+          description: Stored sessions in creation order, or an empty array
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SessionInfo'
     post:
       summary: Establish an AES session using the RSA public key
       description: >-
@@ -174,6 +189,21 @@ paths:
                 error: Session expired
 components:
   schemas:
+    SessionInfo:
+      type: object
+      additionalProperties: false
+      required: [sessionId, isValid, expiresAt]
+      properties:
+        sessionId:
+          type: string
+        isValid:
+          type: boolean
+          description: True when expiresAt is not earlier than the current UTC time.
+        expiresAt:
+          type: string
+          format: date-time
+          description: Session expiration in UTC.
+          example: '2026-11-18T12:01:00.000Z'
     MessageHash:
       type: string
       minLength: 64

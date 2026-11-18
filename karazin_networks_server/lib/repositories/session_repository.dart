@@ -26,5 +26,7 @@ class SessionRepository {
 
   Session? getById(String sessionId) => _sessions[sessionId];
 
+  List<Session> getAll() => _sessions.values.toList();
+
   bool isExpired(Session session) => session.expiresAt.isBefore(_now());
 }

@@ -80,3 +80,16 @@ Both buttons are disabled during sending or while no session is established.
 If the session expires, the client establishes a new one and retries once using
 the original text and the same hash. The intentionally invalid hash also remains
 invalid after renewal. SHA-256 here is a checksum, not a digital signature.
+
+## Session list
+
+`GET /api/sessions` returns a JSON array with `sessionId`, `isValid` and `expiresAt`
+for every session in creation order, including expired sessions. The expiration
+is always in UTC; AES keys and IVs are never returned. Validity is calculated for
+each request. An empty repository returns `[]`. Sessions are stored only in memory
+and disappear when the server restarts.
+
+The client opens the list through `Sessions` in the main screen's app bar. It shows
+validity and expiration in the user's local time zone. Use the refresh button to
+reload the list and update statuses. Back returns to the same main screen and
+preserves the draft and current session.

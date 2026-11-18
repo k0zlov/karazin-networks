@@ -1,6 +1,7 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:karazin_networks_client/cubit/main_cubit.dart';
 import 'package:karazin_networks_client/cubit/main_state.dart';
+import 'package:karazin_networks_client/navigation/routes.dart';
 import 'package:karazin_networks_client/widgets/message_panel.dart';
 import 'package:karazin_networks_client/widgets/session_status.dart';
 import 'package:material_ui/material_ui.dart';
@@ -13,7 +14,15 @@ class MainScreen extends StatelessWidget {
     final cubit = context.read<MainCubit>();
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Karazin Networks')),
+      appBar: AppBar(
+        title: const Text('Karazin Networks'),
+        actions: [
+          TextButton(
+            onPressed: () => const SessionsRoute().push<void>(context),
+            child: const Text('Sessions'),
+          ),
+        ],
+      ),
       body: SafeArea(
         child: Center(
           child: ConstrainedBox(
